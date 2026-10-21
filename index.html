@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POINT BLANK - 5v5 HD Team Deathmatch</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            user-select: none;
+            overflow: hidden;
+            background-color: #030712;
+            color: #fff;
+        }
+        .font-teko {
+            font-family: 'Teko', sans-serif;
+        }
+        /* PB Kill Banner Animations */
+        @keyframes pbKillBanner {
+            0% { transform: scale(0.3) translateY(-30px); opacity: 0; }
+            12% { transform: scale(1.15) translateY(0); opacity: 1; }
+            80% { transform: scale(1) translateY(0); opacity: 1; }
+            100% { transform: scale(0.9) translateY(-15px); opacity: 0; }
+        }
+        .animate-pb-banner {
+            animation: pbKillBanner 2.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        /* Hitmarker Animation */
+        @keyframes hitAnim {
+            0% { opacity: 1; transform: scale(1.3); }
+            100% { opacity: 0; transform: scale(0.9); }
+        }
+        .hitmarker-active {
+            animation: hitAnim 0.18s ease-out forwards;
+        }
+        /* Sniper Scope Overlay Gradient */
+        .sniper-scope-bg {
+            background: radial-gradient(circle at center, transparent 32%, black 37%);
+        }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden bg-black text-white select-none">
+
+    <!-- 3D Canvas Viewport Container -->
+    <div id="canvas-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+    <!-- IN-GAME HUD OVERLAY -->
+    <div id="hud-container" class="hidden absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4">
+        
+        <!-- Top HUD Row -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Minimap / Radar HD Container -->
+            <div class="bg-slate-950/80 border-2 border-cyan-500/80 rounded-xl p-1.5 w-40 h-40 relative flex items-center justify-center shadow-xl shadow-cyan-950/40">
+                <canvas id="minimap" class="w-full h-full rounded-lg bg-slate-900/90"></canvas>
+                <div class="absolute text-[10px] text-cyan-400 font-bold top-2 left-2.5 font-teko tracking-wider bg-black/60 px-1.5 rounded">
+                    LUXVILLE 5v5
+                </div>
+            </div>
+
+            <!-- TDM Match Score & Objective -->
+            <div class="flex flex-col items-center bg-black/80 border-b-4 border-cyan-600 px-8 py-1.5 rounded-b-2xl shadow-2xl backdrop-blur-md">
+                <div class="text-[11px] text-slate-400 font-bold tracking-widest uppercase flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span> 5v5 TEAM DEATHMATCH
+                </div>
+                <div class="flex items-center gap-6 text-3xl font-teko font-bold tracking-wider">
+                    <span class="text-blue-400 flex items-center gap-2">
+                        <span class="text-xs tracking-normal bg-blue-900/60 px-2 py-0.5 rounded text-blue-200">CT FORCE</span>
+                        <span id="score-blue" class="text-4xl">0</span>
+                    </span>
+                    <span class="text-slate-500 text-sm">VS</span>
+                    <span class="text-red-500 flex items-center gap-2">
+                        <span id="score-red" class="text-4xl">0</span>
+                        <span class="text-xs tracking-normal bg-red-900/60 px-2 py-0.5 rounded text-red-200">FREE REBELS</span>
+                    </span>
+                </div>
+                <div class="text-[10px] text-amber-400 font-semibold tracking-wider uppercase">
+                    TARGET: <span id="target-kills">40</span> KILLS
+                </div>
+            </div>
+
+            <!-- Killfeed (Top Right) -->
+            <div id="killfeed" class="flex flex-col items-end gap-1.5 w-72 max-h-48 overflow-hidden font-bold text-xs">
+                <!-- Dynamically populated kill event items -->
+            </div>
+        </div>
+
+        <!-- Center HUD Overlay (Crosshair, Hitmarker, Sniper Scope, Announcer) -->
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            
+            <!-- Dynamic Crosshair -->
+            <div id="crosshair" class="relative w-8 h-8 flex items-center justify-center transition-all duration-75">
+                <div class="absolute w-2.5 h-0.5 bg-cyan-400 left-0 shadow-sm shadow-cyan-500"></div>
+                <div class="absolute w-2.5 h-0.5 bg-cyan-400 right-0 shadow-sm shadow-cyan-500"></div>
+                <div class="absolute h-2.5 w-0.5 bg-cyan-400 top-0 shadow-sm shadow-cyan-500"></div>
+                <div class="absolute h-2.5 w-0.5 bg-cyan-400 bottom-0 shadow-sm shadow-cyan-500"></div>
+                <div class="w-1 h-1 bg-red-500 rounded-full"></div>
+            </div>
+
+            <!-- Hitmarker (Red Crosshair Hit) -->
+            <div id="hitmarker" class="absolute w-8 h-8 opacity-0 pointer-events-none flex items-center justify-center">
+                <div class="absolute w-4 h-0.5 bg-red-600 rotate-45 shadow-sm shadow-red-500"></div>
+                <div class="absolute w-4 h-0.5 bg-red-600 -rotate-45 shadow-sm shadow-red-500"></div>
+            </div>
+
+            <!-- Sniper Scope Overlay -->
+            <div id="scope-overlay" class="hidden fixed inset-0 sniper-scope-bg border-[60px] border-black z-20 flex items-center justify-center pointer-events-none">
+                <div class="w-full h-0.5 bg-black/90 absolute"></div>
+                <div class="h-full w-0.5 bg-black/90 absolute"></div>
+                <div class="w-40 h-40 rounded-full border border-red-500/50 absolute"></div>
+                <div class="w-20 h-20 rounded-full border border-cyan-500/30 absolute"></div>
+            </div>
+
+            <!-- PB Announcer Banner -->
+            <div id="announcer-container" class="absolute top-1/4 flex flex-col items-center justify-center pointer-events-none z-30">
+                <!-- Dynamically injected PB Announcer Banners -->
+            </div>
+        </div>
+
+        <!-- Bottom HUD Row -->
+        <div class="flex justify-between items-end w-full">
+            <!-- Health & Armor Panel -->
+            <div class="bg-black/85 border-l-4 border-cyan-500 px-5 py-2.5 rounded-r-xl w-60 shadow-2xl backdrop-blur-md">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-bold text-cyan-400 flex items-center gap-1">❤️ HEALTH</span>
+                    <span id="hp-text" class="text-base font-teko text-white font-bold">100</span>
+                </div>
+                <div class="w-full bg-slate-800 h-3 rounded-full overflow-hidden mb-2 border border-slate-700">
+                    <div id="hp-bar" class="bg-gradient-to-r from-cyan-600 to-cyan-400 h-full transition-all duration-200" style="width: 100%;"></div>
+                </div>
+
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-bold text-blue-400 flex items-center gap-1">🛡️ ARMOR</span>
+                    <span id="armor-text" class="text-base font-teko text-white font-bold">100</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+                    <div id="armor-bar" class="bg-blue-500 h-full transition-all duration-200" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- Hint overlay for Scoreboard TAB -->
+            <div class="text-slate-400 text-xs font-bold tracking-wider bg-black/60 px-4 py-1.5 rounded-lg border border-slate-800 backdrop-blur-sm">
+                Tekan <span class="text-amber-400 font-teko text-sm">TAB</span> untuk Leaderboard 5v5 | <span class="text-amber-400 font-teko text-sm">C</span> Crouch
+            </div>
+
+            <!-- Weapon Ammo Panel -->
+            <div class="bg-black/85 border-r-4 border-amber-500 px-6 py-2.5 rounded-l-xl flex items-center gap-5 shadow-2xl backdrop-blur-md">
+                <div class="text-right">
+                    <div id="weapon-name" class="text-xl font-teko text-amber-400 leading-none font-bold tracking-wide">AUG A3</div>
+                    <div class="text-[10px] text-slate-400 font-semibold uppercase mt-0.5">SLOT <span id="weapon-slot">1</span></div>
+                </div>
+                <div class="text-4xl font-teko font-bold text-white tracking-widest flex items-baseline gap-1">
+                    <span id="ammo-clip" class="text-amber-400 text-5xl">30</span>
+                    <span class="text-slate-500 text-2xl">/</span>
+                    <span id="ammo-reserve" class="text-slate-400 text-2xl">180</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB LEADERBOARD SCOREBOARD MODAL -->
+    <div id="scoreboard-modal" class="hidden absolute inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 pointer-events-none">
+        <div class="bg-slate-950 border-2 border-cyan-500/80 rounded-2xl w-full max-w-4xl p-6 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+                <div class="text-2xl font-teko font-bold text-cyan-400 tracking-wider">
+                    PAPAN SKOR MATCH 5v5 - MATCH STATUS
+                </div>
+                <div class="text-xs text-slate-400 font-bold">
+                    TARGET SCORE: <span class="text-amber-400 font-teko text-base">40 KILLS</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- CT FORCE TEAM (BLUE) -->
+                <div class="bg-blue-950/30 border border-blue-800/50 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-3 pb-2 border-b border-blue-900/60">
+                        <span class="font-teko text-xl font-bold text-blue-400">TIM KAMU (CT FORCE)</span>
+                        <span id="sb-blue-score" class="font-teko text-2xl font-bold text-blue-300">0 KILLS</span>
+                    </div>
+                    <table class="w-full text-xs text-left">
+                        <thead>
+                            <tr class="text-slate-400 border-b border-slate-800">
+                                <th class="pb-1">NAMA PEMAIN</th>
+                                <th class="pb-1 text-center">KILL</th>
+                                <th class="pb-1 text-center">DEATH</th>
+                                <th class="pb-1 text-right">SCORE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tb-blue-team">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- FREE REBELS TEAM (RED) -->
+                <div class="bg-red-950/30 border border-red-800/50 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-3 pb-2 border-b border-red-900/60">
+                        <span class="font-teko text-xl font-bold text-red-400">TIM MUSUH (FREE REBELS)</span>
+                        <span id="sb-red-score" class="font-teko text-2xl font-bold text-red-300">0 KILLS</span>
+                    </div>
+                    <table class="w-full text-xs text-left">
+                        <thead>
+                            <tr class="text-slate-400 border-b border-slate-800">
+                                <th class="pb-1">NAMA PEMAIN</th>
+                                <th class="pb-1 text-center">KILL</th>
+                                <th class="pb-1 text-center">DEATH</th>
+                                <th class="pb-1 text-right">SCORE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tb-red-team">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN MENU OVERLAY -->
+    <div id="main-menu" class="absolute inset-0 z-30 bg-slate-950/95 flex flex-col justify-between p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-950/40 via-slate-950 to-black">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center border-b border-cyan-900/50 pb-4">
+            <div>
+                <h1 class="text-5xl font-teko font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-amber-400">
+                    POINT BLANK 5v5 HD
+                </h1>
+                <p class="text-xs text-slate-400 font-semibold tracking-widest uppercase">TACTICAL MULTIPLAYER SIMULATOR</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="bg-slate-900 border border-slate-800 px-4 py-1.5 rounded-lg flex items-center gap-2">
+                    <span class="text-yellow-400 text-xs font-bold">🪙 POINT:</span>
+                    <span id="user-points" class="font-teko text-2xl text-yellow-300 font-bold">5,000</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
+            
+            <div class="bg-slate-900/80 border border-cyan-900/60 hover:border-cyan-500 rounded-2xl p-6 transition duration-300 flex flex-col justify-between shadow-2xl group">
+                <div>
+                    <div class="text-cyan-400 text-xs font-bold tracking-widest mb-1">MODE: 5v5 TEAM DEATHMATCH</div>
+                    <h2 class="text-3xl font-teko font-bold text-white group-hover:text-cyan-300 transition">MAP LUXVILLE HD</h2>
+                    <p class="text-slate-400 text-xs mt-2 leading-relaxed">
+                        Bertempur bersama 4 AI Bot rekan tim (CT Force) melawan 5 AI Bot musuh (Free Rebels). Manfaatkan taktik taktis, senjata kustom, dan komunikasi tim!
+                    </p>
+                </div>
+                <button id="btn-start-game" class="mt-6 w-full bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-teko text-2xl font-bold py-3 rounded-xl transition transform active:scale-95 shadow-lg shadow-cyan-950/50 flex items-center justify-center gap-2">
+                    🎯 MASUK MATCH 5v5
+                </button>
+            </div>
+
+            <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-2xl">
+                <div>
+                    <h2 class="text-2xl font-teko font-bold text-amber-400 mb-3 border-b border-slate-800 pb-2">SENJATA AKTIF</h2>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between items-center bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 font-bold">SLOT 1 (Primary):</span>
+                            <span class="text-amber-300 font-bold">AUG A3 Holo</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 font-bold">SLOT 2 (Sniper):</span>
+                            <span class="text-amber-300 font-bold">CheyTac M200</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 font-bold">SLOT 3 (Secondary):</span>
+                            <span class="text-amber-300 font-bold">Dual Handgun</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-400 font-bold">SLOT 4 (Melee):</span>
+                            <span class="text-amber-300 font-bold">Combat Knife</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-2xl">
+                <div>
+                    <h2 class="text-2xl font-teko font-bold text-cyan-400 mb-3 border-b border-slate-800 pb-2">KONTROL GAME FPS</h2>
+                    <ul class="text-xs text-slate-300 space-y-1.5 font-medium">
+                        <li class="flex justify-between"><span class="text-slate-400">WASD:</span> <span>Bergerak (Jalan)</span></li>
+                        <li class="flex justify-between"><span class="text-slate-400">Shift / Space:</span> <span>Sprint / Lompat</span></li>
+                        <li class="flex justify-between"><span class="text-slate-400">C / Ctrl:</span> <span>Crouch / Jongkok</span></li>
+                        <li class="flex justify-between"><span class="text-slate-400">Klik Kiri:</span> <span>Menembak</span></li>
+                        <li class="flex justify-between"><span class="text-slate-400">Klik Kanan:</span> <span>Aim Down Sight / Scope</span></li>
+                        <li class="flex justify-between"><span class="text-slate-400">Tahan TAB:</span> <span>Scoreboard 5v5</span></li>
+                        <li class="flex justify-between"><span class="text-slate-400">Tombol 1 - 4:</span> <span>Ganti Senjata</span></li>
+                        <li class="flex justify-between"><span class="text-slate-400">R:</span> <span>Reload Amunisi</span></li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="text-center text-xs text-slate-600 border-t border-slate-900 pt-3">
+            Point Blank 5v5 Tactical Simulator - Web Audio API & Three.js HD Rendering
+        </div>
+    </div>
+
+    <!-- PAUSE MENU OVERLAY -->
+    <div id="pause-menu" class="hidden absolute inset-0 z-30 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center">
+        <div class="bg-slate-900 border-2 border-cyan-500 p-8 rounded-2xl w-96 text-center shadow-2xl">
+            <h2 class="text-4xl font-teko font-bold text-cyan-400 mb-1">PERTANDINGAN PAUSED</h2>
+            <p class="text-xs text-slate-400 mb-6">Tekan ESC untuk Lanjut Bermain</p>
+            
+            <div class="space-y-3">
+                <button id="btn-resume" class="w-full bg-cyan-600 hover:bg-cyan-500 font-teko text-2xl font-bold py-2.5 rounded-xl transition">
+                    LANJUT MATCH
+                </button>
+                <button onclick="quitToMainMenu()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-teko text-xl font-bold py-2 rounded-xl transition border border-slate-700">
+                    KELUAR KE LOBBY
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT ENGINE & LOGIC -->
+    <script>
+        /* ----------------------------------------------------
+           1. WEB AUDIO API ADVANCED HD SYNTHESIZER
+        ---------------------------------------------------- */
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioCtx();
+        }
+
+        // Heavy Bass Gunshot & Sound Synthesis Engine
+        function playHDGunSound(type) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            if (type === 'aug' || type === 'pistol') {
+                // Punchy Heavy Assault Rifle Shot
+                const osc = audioCtx.createOscillator();
+                const noise = audioCtx.createBufferSource();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+
+                // Generate Noise Buffer for Gunpowder Explosion
+                const bufferSize = audioCtx.sampleRate * 0.2;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                noise.buffer = buffer;
+
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(type === 'aug' ? 1800 : 1200, now);
+                filter.frequency.exponentialRampToValueAtTime(100, now + 0.18);
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.18);
+
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+
+                noise.connect(filter);
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                noise.start(now);
+                osc.start(now);
+                noise.stop(now + 0.18);
+                osc.stop(now + 0.18);
+            } 
+            else if (type === 'sniper') {
+                // Deep Bass Heavy Sniper Blast (CheyTac M200)
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(140, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.45);
+
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.45);
+            }
+            else if (type === 'hit') {
+                // Punchy Enemy Body Hit Sound
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(650, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.08);
+
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.08);
+            }
+            else if (type === 'headshot') {
+                // High Pitch Sharp Headshot Chime Sound
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc1.type = 'triangle';
+                osc2.type = 'sine';
+                osc1.frequency.setValueAtTime(1400, now);
+                osc2.frequency.setValueAtTime(2100, now);
+
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+                osc1.connect(gain);
+                osc2.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 0.35);
+                osc2.stop(now + 0.35);
+            }
+            else if (type === 'footstep') {
+                // Soft Mechanical Footstep Sound
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(80, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.05);
+
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+            else if (type === 'reload') {
+                // Reload Click Sound
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.15);
+
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+        }
+
+        /* ----------------------------------------------------
+           2. 5v5 TEAM MATCH STATE & WEAPONS DATA
+        ---------------------------------------------------- */
+        let userPoints = 5000;
+        let blueScore = 0;
+        let redScore = 0;
+        const targetKills = 40;
+
+        let killStreakCount = 0;
+        let lastKillTime = 0;
+
+        // Weapons Configuration
+        const weapons = {
+            1: { name: 'AUG A3 Holo', slot: 1, type: 'aug', ammoClip: 30, maxClip: 30, reserveAmmo: 180, damage: 34, fireRate: 100, lastShot: 0, recoil: 0.035, color: 0x334155 },
+            2: { name: 'CheyTac M200', slot: 2, type: 'sniper', ammoClip: 5, maxClip: 5, reserveAmmo: 30, damage: 100, fireRate: 1250, lastShot: 0, recoil: 0.14, color: 0x1e293b },
+            3: { name: 'Dual Handgun', slot: 3, type: 'pistol', ammoClip: 16, maxClip: 16, reserveAmmo: 96, damage: 26, fireRate: 180, lastShot: 0, recoil: 0.025, color: 0x475569 },
+            4: { name: 'Combat Knife', slot: 4, type: 'knife', ammoClip: '∞', maxClip: '∞', reserveAmmo: '∞', damage: 65, fireRate: 450, lastShot: 0, recoil: 0.02, color: 0x94a3b8 }
+        };
+
+        let currentWeaponSlot = 1;
+        let isAiming = false;
+        let isReloading = false;
+
+        /* ----------------------------------------------------
+           3. 5v5 ROSTER SYSTEM (4 Teammates + 1 Player vs 5 Enemies)
+        ---------------------------------------------------- */
+        let blueTeam = [
+            { id: 'player', name: 'PLAYER (You)', isPlayer: true, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'blue_bot1', name: 'CT_AcidPunch', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'blue_bot2', name: 'CT_HideKira', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'blue_bot3', name: 'CT_DemonLover', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'blue_bot4', name: 'CT_ChouMaster', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 }
+        ];
+
+        let redTeam = [
+            { id: 'red_bot1', name: 'Rebel_Viper', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'red_bot2', name: 'Rebel_Tarantula', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'red_bot3', name: 'Rebel_RedBulls', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'red_bot4', name: 'Rebel_DinoKing', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 },
+            { id: 'red_bot5', name: 'Rebel_Cayman', isPlayer: false, kills: 0, deaths: 0, score: 0, hp: 100 }
+        ];
+
+        /* ----------------------------------------------------
+           4. THREE.JS 3D SCENE & GRAPHICS ENGINE SETUP
+        ---------------------------------------------------- */
+        let scene, camera, renderer;
+        let player = {
+            hp: 100,
+            armor: 100,
+            position: new THREE.Vector3(0, 1.7, 25),
+            velocity: new THREE.Vector3(),
+            onGround: true,
+            isCrouching: false,
+            speed: 0.12,
+            sprintMultiplier: 1.6
+        };
+
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false, isSprinting = false;
+        let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+        let weaponMeshGroup;
+        let muzzleFlashLight;
+
+        let bots = [];
+        let particles = [];
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.022);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.copy(player.position);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Lighting Setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffedd5, 0.9);
+            sunLight.position.set(30, 50, 30);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 1024;
+            sunLight.shadow.mapSize.height = 1024;
+            scene.add(sunLight);
+
+            // Dynamic Muzzle Flash PointLight attached to camera
+            muzzleFlashLight = new THREE.PointLight(0xfacc15, 0, 10);
+            camera.add(muzzleFlashLight);
+            scene.add(camera);
+
+            // Construct 3D Luxville Map
+            buildHDLuxvilleMap();
+
+            // Construct First Person Weapon Model
+            createWeaponMesh();
+
+            // Spawn All 9 AI Bots (4 Blue Teammates + 5 Red Enemies)
+            spawnAllBots();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        /* ----------------------------------------------------
+           5. PROCEDURAL CANVAS TEXTURES & LUXVILLE MAP BUILDER
+        ---------------------------------------------------- */
+        function createProceduralTileTexture(color1, color2) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color1;
+            ctx.fillRect(0, 0, 256, 256);
+            ctx.strokeStyle = color2;
+            ctx.lineWidth = 4;
+            for (let i = 0; i <= 256; i += 64) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            return texture;
+        }
+
+        function buildHDLuxvilleMap() {
+            // Floor
+            const floorTex = createProceduralTileTexture('#1e293b', '#334155');
+            floorTex.repeat.set(16, 16);
+            const floorGeo = new THREE.PlaneGeometry(120, 120);
+            const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.6 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Walls
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+            const walls = [
+                { x: 0, z: -60, w: 120, h: 14, ry: 0 },
+                { x: 0, z: 60, w: 120, h: 14, ry: 0 },
+                { x: -60, z: 0, w: 120, h: 14, ry: Math.PI / 2 },
+                { x: 60, z: 0, w: 120, h: 14, ry: Math.PI / 2 }
+            ];
+
+            walls.forEach(w => {
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w.w, w.h, 2), wallMat);
+                mesh.position.set(w.x, w.h / 2, w.z);
+                mesh.rotation.y = w.ry;
+                mesh.receiveShadow = true;
+                mesh.castShadow = true;
+                scene.add(mesh);
+            });
+
+            // Containers & Tactical Obstacles
+            const crateMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+            const redContainerMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.4 });
+            const blueContainerMat = new THREE.MeshStandardMaterial({ color: 0x1e40af, roughness: 0.4 });
+
+            const obstacles = [
+                { geo: new THREE.BoxGeometry(8, 5, 16), mat: redContainerMat, x: -12, y: 2.5, z: -10 },
+                { geo: new THREE.BoxGeometry(8, 5, 16), mat: blueContainerMat, x: 12, y: 2.5, z: 10 },
+                { geo: new THREE.BoxGeometry(16, 5, 8), mat: redContainerMat, x: 0, y: 2.5, z: -30 },
+                { geo: new THREE.BoxGeometry(4, 4, 4), mat: crateMat, x: -20, y: 2, z: 15 },
+                { geo: new THREE.BoxGeometry(4, 4, 4), mat: crateMat, x: -20, y: 6, z: 15 },
+                { geo: new THREE.BoxGeometry(4, 4, 4), mat: crateMat, x: 22, y: 2, z: -18 },
+            ];
+
+            obstacles.forEach(obs => {
+                const mesh = new THREE.Mesh(obs.geo, obs.mat);
+                mesh.position.set(obs.x, obs.y, obs.z);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                scene.add(mesh);
+            });
+        }
+
+        /* ----------------------------------------------------
+           6. FIRST-PERSON WEAPON MESH CREATOR
+        ---------------------------------------------------- */
+        function createWeaponMesh() {
+            if (weaponMeshGroup) camera.remove(weaponMeshGroup);
+
+            weaponMeshGroup = new THREE.Group();
+            const wep = weapons[currentWeaponSlot];
+            const mat = new THREE.MeshStandardMaterial({ color: wep.color, metalness: 0.7, roughness: 0.2 });
+
+            if (wep.type === 'aug') {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.65), mat);
+                weaponMeshGroup.add(body);
+                // Holo Scope Attachment
+                const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.15), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+                scope.rotation.x = Math.PI / 2;
+                scope.position.set(0, 0.12, -0.05);
+                weaponMeshGroup.add(scope);
+                // Barrel
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4), mat);
+                barrel.rotation.x = Math.PI / 2;
+                barrel.position.set(0, 0.02, -0.45);
+                weaponMeshGroup.add(barrel);
+            } else if (wep.type === 'sniper') {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.8), mat);
+                weaponMeshGroup.add(body);
+            } else if (wep.type === 'pistol') {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.35), mat);
+                weaponMeshGroup.add(body);
+            } else {
+                const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.3, 0.06), mat);
+                weaponMeshGroup.add(blade);
+            }
+
+            weaponMeshGroup.position.set(0.24, -0.24, -0.48);
+            camera.add(weaponMeshGroup);
+        }
+
+        /* ----------------------------------------------------
+           7. 5v5 AI BOTS SPAWN & BEHAVIOR SYSTEM
+        ---------------------------------------------------- */
+        function spawnBotUnit(data, isBlueTeam) {
+            const botGroup = new THREE.Group();
+
+            const bodyMat = new THREE.MeshStandardMaterial({ color: isBlueTeam ? 0x2563eb : 0xd97706 });
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xfca5a5 });
+
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.4), bodyMat);
+            body.position.y = 0.7;
+            body.castShadow = true;
+            botGroup.add(body);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), headMat);
+            head.position.y = 1.6;
+            head.castShadow = true;
+            botGroup.add(head);
+
+            // Spawn Position based on team side
+            const spawnZ = isBlueTeam ? (15 + Math.random() * 15) : (-15 - Math.random() * 15);
+            const spawnX = (Math.random() - 0.5) * 60;
+            botGroup.position.set(spawnX, 0, spawnZ);
+
+            scene.add(botGroup);
+
+            bots.push({
+                data: data,
+                mesh: botGroup,
+                head: head,
+                isBlueTeam: isBlueTeam,
+                hp: 100,
+                lastShoot: 0,
+                speed: 0.05 + Math.random() * 0.02,
+                patrolTarget: new THREE.Vector3((Math.random() - 0.5) * 60, 0, (Math.random() - 0.5) * 60)
+            });
+        }
+
+        function spawnAllBots() {
+            bots = [];
+            // Spawn Blue Teammates (Exclude Player at index 0)
+            for (let i = 1; i < blueTeam.length; i++) {
+                spawnBotUnit(blueTeam[i], true);
+            }
+            // Spawn Red Enemies
+            for (let i = 0; i < redTeam.length; i++) {
+                spawnBotUnit(redTeam[i], false);
+            }
+        }
+
+        // AI Bot Patrol & Combat Loop
+        function updateBots(now) {
+            bots.forEach((bot) => {
+                if (bot.hp <= 0) return;
+
+                // Find nearest enemy
+                let nearestEnemy = null;
+                let minDist = 999;
+
+                if (bot.isBlueTeam) {
+                    // Blue Bot searches for Red Bots
+                    bots.filter(b => !b.isBlueTeam && b.hp > 0).forEach(enemy => {
+                        let d = bot.mesh.position.distanceTo(enemy.mesh.position);
+                        if (d < minDist) { minDist = d; nearestEnemy = enemy; }
+                    });
+                } else {
+                    // Red Bot searches for Player OR Blue Bots
+                    let distToPlayer = bot.mesh.position.distanceTo(camera.position);
+                    if (distToPlayer < minDist) { minDist = distToPlayer; nearestEnemy = { isPlayer: true, position: camera.position }; }
+
+                    bots.filter(b => b.isBlueTeam && b.hp > 0).forEach(blueBot => {
+                        let d = bot.mesh.position.distanceTo(blueBot.mesh.position);
+                        if (d < minDist) { minDist = d; nearestEnemy = blueBot; }
+                    });
+                }
+
+                if (nearestEnemy && minDist < 35) {
+                    // Target position
+                    let targetPos = nearestEnemy.isPlayer ? nearestEnemy.position : nearestEnemy.mesh.position;
+                    let dir = new THREE.Vector3().subVectors(targetPos, bot.mesh.position);
+                    dir.y = 0;
+                    dir.normalize();
+
+                    bot.mesh.position.addScaledVector(dir, bot.speed);
+                    bot.mesh.lookAt(targetPos.x, bot.mesh.position.y, targetPos.z);
+
+                    // Shoot Enemy
+                    if (now - bot.lastShoot > 1400) {
+                        bot.lastShoot = now;
+                        playHDGunSound('aug');
+
+                        if (nearestEnemy.isPlayer) {
+                            // Damage Player
+                            let dmg = 12;
+                            if (player.armor > 0) {
+                                player.armor = Math.max(0, player.armor - dmg * 0.5);
+                                player.hp -= dmg * 0.5;
+                            } else {
+                                player.hp -= dmg;
+                            }
+
+                            updateHUD();
+
+                            if (player.hp <= 0) {
+                                // Player Defeated -> Respawn
+                                player.hp = 100; player.armor = 100;
+                                camera.position.set(0, 1.7, 25);
+                                redScore++;
+                                blueTeam[0].deaths++;
+                                bot.data.kills++;
+                                bot.data.score += 100;
+                                addKillfeed(bot.data.name, 'PLAYER', 'AUG A3');
+                                updateHUD();
+                            }
+                        } else {
+                            // Damage Other Bot
+                            nearestEnemy.hp -= 30;
+                            if (nearestEnemy.hp <= 0) {
+                                scene.remove(nearestEnemy.mesh);
+                                bot.data.kills++;
+                                bot.data.score += 100;
+                                nearestEnemy.data.deaths++;
+
+                                if (bot.isBlueTeam) blueScore++; else redScore++;
+                                addKillfeed(bot.data.name, nearestEnemy.data.name, 'AUG A3');
+                                updateHUD();
+
+                                // Respawn Bot after 3s
+                                const respawnBot = nearestEnemy;
+                                setTimeout(() => {
+                                    respawnBot.hp = 100;
+                                    const spawnZ = respawnBot.isBlueTeam ? (15 + Math.random() * 15) : (-15 - Math.random() * 15);
+                                    respawnBot.mesh.position.set((Math.random() - 0.5) * 60, 0, spawnZ);
+                                    scene.add(respawnBot.mesh);
+                                }, 3000);
+                            }
+                        }
+                    }
+                } else {
+                    // Patrol Target
+                    let dir = new THREE.Vector3().subVectors(bot.patrolTarget, bot.mesh.position);
+                    dir.y = 0;
+                    if (dir.length() < 2) {
+                        bot.patrolTarget.set((Math.random() - 0.5) * 60, 0, (Math.random() - 0.5) * 60);
+                    } else {
+                        dir.normalize();
+                        bot.mesh.position.addScaledVector(dir, bot.speed * 0.6);
+                        bot.mesh.lookAt(bot.patrolTarget.x, bot.mesh.position.y, bot.patrolTarget.z);
+                    }
+                }
+            });
+        }
+
+        /* ----------------------------------------------------
+           8. CONTROLS, SHOOTING LOGIC & PARTICLES
+        ---------------------------------------------------- */
+        const mainContainer = document.body;
+
+        document.getElementById('btn-start-game').addEventListener('click', () => {
+            initAudio();
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('hud-container').classList.remove('hidden');
+            mainContainer.requestPointerLock();
+        });
+
+        document.getElementById('btn-resume').addEventListener('click', () => {
+            document.getElementById('pause-menu').classList.add('hidden');
+            mainContainer.requestPointerLock();
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === mainContainer) {
+                document.getElementById('pause-menu').classList.add('hidden');
+            } else {
+                if (document.getElementById('main-menu').classList.contains('hidden')) {
+                    document.getElementById('pause-menu').classList.remove('hidden');
+                }
+            }
+        });
+
+        // Mouse Look
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement !== mainContainer) return;
+            const sensitivity = 0.002;
+            euler.y -= e.movementX * sensitivity;
+            euler.x -= e.movementY * sensitivity;
+            euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+            camera.quaternion.setFromEuler(euler);
+        });
+
+        // Keyboard Controls
+        document.addEventListener('keydown', (e) => {
+            switch (e.code) {
+                case 'KeyW': moveForward = true; break;
+                case 'KeyS': moveBackward = true; break;
+                case 'KeyA': moveLeft = true; break;
+                case 'KeyD': moveRight = true; break;
+                case 'ShiftLeft': isSprinting = true; break;
+                case 'KeyC': 
+                case 'ControlLeft':
+                    player.isCrouching = !player.isCrouching;
+                    camera.position.y = player.isCrouching ? 1.0 : 1.7;
+                    break;
+                case 'Tab':
+                    e.preventDefault();
+                    showScoreboard(true);
+                    break;
+                case 'KeyR': reloadWeapon(); break;
+                case 'Digit1': switchWeapon(1); break;
+                case 'Digit2': switchWeapon(2); break;
+                case 'Digit3': switchWeapon(3); break;
+                case 'Digit4': switchWeapon(4); break;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            switch (e.code) {
+                case 'KeyW': moveForward = false; break;
+                case 'KeyS': moveBackward = false; break;
+                case 'KeyA': moveLeft = false; break;
+                case 'KeyD': moveRight = false; break;
+                case 'ShiftLeft': isSprinting = false; break;
+                case 'Tab':
+                    e.preventDefault();
+                    showScoreboard(false);
+                    break;
+            }
+        });
+
+        // Mouse Click Shoot
+        document.addEventListener('mousedown', (e) => {
+            if (document.pointerLockElement !== mainContainer) return;
+
+            if (e.button === 0) {
+                shoot();
+            } else if (e.button === 2) {
+                // Scope Aim
+                isAiming = !isAiming;
+                if (weapons[currentWeaponSlot].type === 'sniper') {
+                    document.getElementById('scope-overlay').style.display = isAiming ? 'flex' : 'none';
+                    camera.fov = isAiming ? 20 : 75;
+                } else {
+                    camera.fov = isAiming ? 48 : 75;
+                }
+                camera.updateProjectionMatrix();
+            }
+        });
+
+        function switchWeapon(slot) {
+            if (currentWeaponSlot === slot || isReloading) return;
+            currentWeaponSlot = slot;
+            isAiming = false;
+            camera.fov = 75;
+            camera.updateProjectionMatrix();
+            document.getElementById('scope-overlay').style.display = 'none';
+
+            createWeaponMesh();
+            updateHUD();
+            playHDGunSound('reload');
+        }
+
+        function reloadWeapon() {
+            const wep = weapons[currentWeaponSlot];
+            if (wep.ammoClip === wep.maxClip || wep.reserveAmmo <= 0 || wep.type === 'knife') return;
+
+            isReloading = true;
+            playHDGunSound('reload');
+
+            setTimeout(() => {
+                const needed = wep.maxClip - wep.ammoClip;
+                const available = Math.min(needed, wep.reserveAmmo);
+                wep.ammoClip += available;
+                wep.reserveAmmo -= available;
+                isReloading = false;
+                updateHUD();
+            }, 1200);
+        }
+
+        // Raycasting for Player Shooting
+        const raycaster = new THREE.Raycaster();
+
+        function shoot() {
+            const now = performance.now();
+            const wep = weapons[currentWeaponSlot];
+
+            if (isReloading || now - wep.lastShot < wep.fireRate) return;
+
+            if (wep.type !== 'knife') {
+                if (wep.ammoClip <= 0) { reloadWeapon(); return; }
+                wep.ammoClip--;
+                wep.lastShot = now;
+                updateHUD();
+
+                playHDGunSound(wep.type);
+
+                // Muzzle Flash Effect
+                muzzleFlashLight.intensity = 2.5;
+                setTimeout(() => muzzleFlashLight.intensity = 0, 45);
+
+                if (weaponMeshGroup) weaponMeshGroup.position.z += wep.recoil;
+            } else {
+                wep.lastShot = now;
+                playHDGunSound('hit');
+            }
+
+            // Raycast Center Screen
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+            let redBotMeshes = [];
+            bots.filter(b => !b.isBlueTeam && b.hp > 0).forEach(b => {
+                b.mesh.traverse(child => {
+                    if (child.isMesh) {
+                        child.userData.botRef = b;
+                        redBotMeshes.push(child);
+                    }
+                });
+            });
+
+            const intersects = raycaster.intersectObjects(redBotMeshes);
+
+            if (intersects.length > 0) {
+                const hitObj = intersects[0].object;
+                const botRef = hitObj.userData.botRef;
+
+                if (botRef) {
+                    const isHeadshot = (hitObj === botRef.head);
+                    const damage = isHeadshot ? wep.damage * 2.5 : wep.damage;
+
+                    botRef.hp -= damage;
+                    triggerHitmarker();
+                    createBloodSplatter(intersects[0].point);
+
+                    if (isHeadshot) playHDGunSound('headshot'); else playHDGunSound('hit');
+
+                    if (botRef.hp <= 0) {
+                        scene.remove(botRef.mesh);
+
+                        blueScore++;
+                        blueTeam[0].kills++;
+                        blueTeam[0].score += isHeadshot ? 150 : 100;
+                        botRef.data.deaths++;
+
+                        // PB Announcer Streak Logic
+                        if (now - lastKillTime < 3500) {
+                            killStreakCount++;
+                        } else {
+                            killStreakCount = 1;
+                        }
+                        lastKillTime = now;
+
+                        let bannerText = isHeadshot ? 'HEADSHOT!' : 'CHAIN KILLER!';
+                        if (killStreakCount === 2) bannerText = 'DOUBLE KILL!';
+                        if (killStreakCount === 3) bannerText = 'TRIPLE KILL!';
+                        if (killStreakCount >= 4) bannerText = 'MASS KILL!';
+
+                        showAnnouncerBanner(bannerText);
+                        addKillfeed('PLAYER', botRef.data.name, wep.name);
+                        updateHUD();
+
+                        // Respawn Enemy
+                        const respawnBot = botRef;
+                        setTimeout(() => {
+                            respawnBot.hp = 100;
+                            respawnBot.mesh.position.set((Math.random() - 0.5) * 60, 0, -15 - Math.random() * 15);
+                            scene.add(respawnBot.mesh);
+                        }, 3000);
+                    }
+                }
+            }
+        }
+
+        function createBloodSplatter(pos) {
+            for (let i = 0; i < 8; i++) {
+                const p = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.05, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xd97706 })
+                );
+                p.position.copy(pos);
+                scene.add(p);
+                particles.push({ mesh: p, life: 1.0, vx: (Math.random() - 0.5) * 0.1, vy: Math.random() * 0.1, vz: (Math.random() - 0.5) * 0.1 });
+            }
+        }
+
+        function triggerHitmarker() {
+            const hm = document.getElementById('hitmarker');
+            hm.classList.remove('hitmarker-active');
+            void hm.offsetWidth;
+            hm.classList.add('hitmarker-active');
+        }
+
+        /* ----------------------------------------------------
+           9. ANNOUNCER, KILLFEED & LEADERBOARD SYSTEM
+        ---------------------------------------------------- */
+        function showAnnouncerBanner(text) {
+            const container = document.getElementById('announcer-container');
+            container.innerHTML = `
+                <div class="animate-pb-banner flex flex-col items-center">
+                    <div class="text-6xl font-teko font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-red-500 to-amber-300 drop-shadow-[0_6px_6px_rgba(0,0,0,0.9)]">
+                        ${text}
+                    </div>
+                </div>
+            `;
+        }
+
+        function addKillfeed(killer, victim, weaponName) {
+            const feed = document.getElementById('killfeed');
+            const item = document.createElement('div');
+            item.className = 'bg-black/80 px-3 py-1 rounded-lg border-r-4 border-cyan-500 flex items-center gap-2 text-xs backdrop-blur-sm';
+            item.innerHTML = `
+                <span class="text-blue-400">${killer}</span>
+                <span class="text-amber-400 font-teko text-sm">[${weaponName}]</span>
+                <span class="text-red-400">${victim}</span>
+            `;
+            feed.prepend(item);
+            if (feed.children.length > 5) feed.removeChild(feed.lastChild);
+        }
+
+        function showScoreboard(visible) {
+            const modal = document.getElementById('scoreboard-modal');
+            if (visible) {
+                modal.classList.remove('hidden');
+                updateScoreboardTables();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function updateScoreboardTables() {
+            document.getElementById('sb-blue-score').innerText = `${blueScore} KILLS`;
+            document.getElementById('sb-red-score').innerText = `${redScore} KILLS`;
+
+            const tbBlue = document.getElementById('tb-blue-team');
+            tbBlue.innerHTML = blueTeam.map(p => `
+                <tr class="border-b border-slate-800/60 ${p.isPlayer ? 'text-amber-300 font-bold bg-blue-900/20' : 'text-slate-300'}">
+                    <td class="py-1.5">${p.name}</td>
+                    <td class="py-1.5 text-center text-emerald-400">${p.kills}</td>
+                    <td class="py-1.5 text-center text-red-400">${p.deaths}</td>
+                    <td class="py-1.5 text-right font-bold text-amber-400">${p.score}</td>
+                </tr>
+            `).join('');
+
+            const tbRed = document.getElementById('tb-red-team');
+            tbRed.innerHTML = redTeam.map(p => `
+                <tr class="border-b border-slate-800/60 text-slate-300">
+                    <td class="py-1.5">${p.name}</td>
+                    <td class="py-1.5 text-center text-emerald-400">${p.kills}</td>
+                    <td class="py-1.5 text-center text-red-400">${p.deaths}</td>
+                    <td class="py-1.5 text-right font-bold text-amber-400">${p.score}</td>
+                </tr>
+            `).join('');
+        }
+
+        /* ----------------------------------------------------
+           10. HUD & MINIMAP RADAR
+        ---------------------------------------------------- */
+        function updateHUD() {
+            document.getElementById('hp-text').innerText = Math.ceil(player.hp);
+            document.getElementById('hp-bar').style.width = `${Math.max(0, player.hp)}%`;
+
+            document.getElementById('armor-text').innerText = Math.ceil(player.armor);
+            document.getElementById('armor-bar').style.width = `${Math.max(0, player.armor)}%`;
+
+            const wep = weapons[currentWeaponSlot];
+            document.getElementById('weapon-name').innerText = wep.name;
+            document.getElementById('weapon-slot').innerText = wep.slot;
+            document.getElementById('ammo-clip').innerText = wep.ammoClip;
+            document.getElementById('ammo-reserve').innerText = wep.reserveAmmo;
+
+            document.getElementById('score-blue').innerText = blueScore;
+            document.getElementById('score-red').innerText = redScore;
+        }
+
+        const minimapCanvas = document.getElementById('minimap');
+        const minimapCtx = minimapCanvas.getContext('2d');
+
+        function drawMinimap() {
+            minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+
+            const mapSize = 120;
+            const cx = minimapCanvas.width / 2;
+            const cy = minimapCanvas.height / 2;
+
+            // Player Icon (Cyan Dot)
+            minimapCtx.fillStyle = '#06b6d4';
+            minimapCtx.beginPath();
+            minimapCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            minimapCtx.fill();
+
+            // Bots Radar Icons
+            bots.forEach(b => {
+                if (b.hp <= 0) return;
+                const relX = (b.mesh.position.x - camera.position.x) * (minimapCanvas.width / mapSize);
+                const relZ = (b.mesh.position.z - camera.position.z) * (minimapCanvas.height / mapSize);
+
+                minimapCtx.fillStyle = b.isBlueTeam ? '#3b82f6' : '#ef4444';
+                minimapCtx.beginPath();
+                minimapCtx.arc(cx + relX, cy + relZ, 3, 0, Math.PI * 2);
+                minimapCtx.fill();
+            });
+        }
+
+        /* ----------------------------------------------------
+           11. MAIN ANIMATION LOOP
+        ---------------------------------------------------- */
+        let stepSoundTimer = 0;
+
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+
+            if (document.pointerLockElement === mainContainer) {
+                const moveSpeed = isSprinting ? player.speed * player.sprintMultiplier : player.speed;
+
+                const frontDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                frontDir.y = 0; frontDir.normalize();
+
+                const sideDir = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                sideDir.y = 0; sideDir.normalize();
+
+                let isMoving = false;
+                if (moveForward) { camera.position.addScaledVector(frontDir, moveSpeed); isMoving = true; }
+                if (moveBackward) { camera.position.addScaledVector(frontDir, -moveSpeed); isMoving = true; }
+                if (moveLeft) { camera.position.addScaledVector(sideDir, -moveSpeed); isMoving = true; }
+                if (moveRight) { camera.position.addScaledVector(sideDir, moveSpeed); isMoving = true; }
+
+                // Footstep sound loop
+                if (isMoving) {
+                    stepSoundTimer += isSprinting ? 2 : 1;
+                    if (stepSoundTimer > 18) {
+                        stepSoundTimer = 0;
+                        playHDGunSound('footstep');
+                    }
+                }
+
+                // Weapon sway recoil spring
+                if (weaponMeshGroup && weaponMeshGroup.position.z > -0.48) {
+                    weaponMeshGroup.position.z -= 0.008;
+                }
+
+                // Update Blood Particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.mesh.position.x += p.vx;
+                    p.mesh.position.y += p.vy;
+                    p.mesh.position.z += p.vz;
+                    p.life -= 0.04;
+                    if (p.life <= 0) {
+                        scene.remove(p.mesh);
+                        particles.splice(i, 1);
+                    }
+                }
+
+                updateBots(timestamp);
+                drawMinimap();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function quitToMainMenu() {
+            document.getElementById('pause-menu').classList.add('hidden');
+            document.getElementById('hud-container').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+            if (document.pointerLockElement) document.exitPointerLock();
+        }
+
+        // Launch Engine
+        init3D();
+        animate(0);
+    </script>
+</body>
+</html>
